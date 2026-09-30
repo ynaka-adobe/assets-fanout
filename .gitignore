@@ -1,0 +1,13 @@
+node_modules/
+.env
+dist/
+.aio
+.nui
+*.log
+
+# Never commit credentials
+.aws*
+*.creds.json
+*credential*
+aem-service-credentials.json
+*.p12

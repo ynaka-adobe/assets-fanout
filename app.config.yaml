@@ -1,0 +1,96 @@
+# Adobe App Builder / I/O Runtime configuration.
+#
+# `aio app deploy` publishes these actions to Adobe I/O Runtime. The `ingest`
+# action is registered as the consumer of the AEM Assets
+# `aem.assets.asset.processing_completed` I/O Event (see README for the
+# event-registration step).
+#
+# NOTE: manifest `inputs:` are delivered to actions as PARAMETERS (main(params)),
+# NOT environment variables. Runtime behavior is therefore auto-detected in code
+# (lib/store.js uses durable aio-lib-state whenever __OW_API_KEY is present).
+# The store/dispatch mode are intentionally NOT set here — a deployed action
+# defaults to durable state + direct dispatch. Enabling async dispatch in prod
+# is gated on ledger optimistic-concurrency (see README "Production notes").
+application:
+  runtimeManifest:
+    packages:
+      toyota-assets-fanout:
+        license: Apache-2.0
+        actions:
+          # --- Event boundary -------------------------------------------------
+          ingest:
+            function: actions/ingest/index.js
+            web: 'yes'
+            runtime: nodejs:18
+            inputs:
+              LOG_LEVEL: debug
+            annotations:
+              require-adobe-auth: false # event webhook posts unauthenticated; verify signature in prod
+              final: true
+              web-custom-options: true # let the action answer CORS preflight (hosted UI calls cross-origin)
+
+          # --- Fan-out branches (independent execution paths) -----------------
+          workflow-sync:
+            function: actions/branches/workflow-sync/index.js
+            web: 'no'
+            runtime: nodejs:18
+          pim-sync:
+            function: actions/branches/pim-sync/index.js
+            web: 'no'
+            runtime: nodejs:18
+          metadata-enrichment:
+            function: actions/branches/metadata-enrichment/index.js
+            web: 'no'
+            runtime: nodejs:18
+          dynamic-media-readiness:
+            function: actions/branches/dynamic-media-readiness/index.js
+            web: 'no'
+            runtime: nodejs:18
+          via-indexing:
+            function: actions/branches/via-indexing/index.js
+            web: 'no'
+            runtime: nodejs:18
+
+          # --- Operations / observability ------------------------------------
+          ledger:
+            function: actions/ledger/index.js
+            web: 'yes'
+            runtime: nodejs:18
+            limits:
+              timeout: 300000
+            annotations:
+              web-custom-options: true
+          metrics:
+            function: actions/metrics/index.js
+            web: 'yes'
+            runtime: nodejs:18
+            limits:
+              timeout: 300000 # list-scan over the KV store can be slow at scale
+            annotations:
+              web-custom-options: true
+          dlq-replay:
+            function: actions/dlq-replay/index.js
+            web: 'yes'
+            runtime: nodejs:18
+            annotations:
+              web-custom-options: true
+          admin:
+            function: actions/admin/index.js
+            web: 'yes'
+            runtime: nodejs:18
+            limits:
+              timeout: 300000
+            annotations:
+              web-custom-options: true
+          sim-upload:
+            function: actions/sim-upload/index.js
+            web: 'yes'
+            runtime: nodejs:18
+            annotations:
+              web-custom-options: true
+          core-poll:
+            function: actions/core-poll/index.js
+            web: 'yes'
+            runtime: nodejs:18
+            annotations:
+              web-custom-options: true

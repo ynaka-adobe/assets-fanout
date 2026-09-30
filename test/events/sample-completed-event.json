@@ -1,0 +1,15 @@
+{
+  "type": "aem.assets.asset.processing_completed",
+  "source": "aem-ui",
+  "data": {
+    "assetId": "urn:aaid:aem:8f3c1a10-2b44-4e0a-9c1e-000000000001",
+    "assetPath": "/content/dam/via/vehicles/2026/camry/hero.jpg",
+    "assetVersion": "sha256-9f2b...c1",
+    "sourceSystem": "toyota-pim",
+    "aemEnvironment": "production",
+    "aemProgram": "via",
+    "processingProfile": "via-standard-v3",
+    "dam:processingId": "proc-000001",
+    "dam:scene7RequestID": null
+  }
+}

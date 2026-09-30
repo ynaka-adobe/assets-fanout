@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Toyota · AEM Assets Fan-Out</title>
+<style>
+  :root {
+    --bg: #0b0e14; --panel: #141925; --panel2: #1b2233; --line: #26314a;
+    --text: #e6ebf5; --muted: #8a97b1; --accent: #4b8dff;
+    --ok: #33d69f; --warn: #f5a623; --bad: #ff5c7a; --pending: #55617d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg); color: var(--text); }
+  header { padding: 20px 28px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 14px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .badge { font-size: 11px; color: var(--ok); border: 1px solid var(--line); border-radius: 6px;
+    padding: 2px 8px; }
+  main { padding: 24px 28px; max-width: 1180px; margin: 0 auto; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    padding: 9px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { border-color: #5a2b3a; }
+  button:disabled { opacity: .5; cursor: default; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .tile .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .tile .value { font-size: 34px; font-weight: 700; margin-top: 6px; }
+  .tile.alert-ok .value { color: var(--ok); }
+  .tile.alert-warn .value { color: var(--warn); }
+  .tile.alert-bad .value { color: var(--bad); }
+  .tile .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--muted); margin: 26px 0 12px; }
+  .pipeline { display: flex; align-items: stretch; gap: 14px; }
+  .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; flex: 0 0 210px; }
+  .stage h3 { margin: 0 0 4px; font-size: 13px; }
+  .stage .desc { color: var(--muted); font-size: 12px; }
+  .arrow { align-self: center; color: var(--muted); font-size: 20px; }
+  .branches { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .branch { display: flex; align-items: center; gap: 10px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--pending); flex: 0 0 auto;
+    transition: background .3s; }
+  .dot.SUCCEEDED { background: var(--ok); }
+  .dot.RUNNING { background: var(--accent); animation: pulse 1s infinite; }
+  .dot.RETRYABLE_FAILURE { background: var(--warn); }
+  .dot.DEAD_LETTER { background: var(--bad); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .branch .name { flex: 1; font-weight: 500; }
+  .branch .stat { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .branch .stat b { color: var(--text); }
+  .readiness-bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden;
+    border: 1px solid var(--line); }
+  .readiness-bar .seg { min-width: 2px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .foot { color: var(--muted); font-size: 12px; margin-top: 28px; }
+  code { background: var(--panel2); padding: 1px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AEM Assets — Event-Driven Fan-Out</h1>
+  <span class="sub">Toyota target architecture</span>
+  <span style="flex:1"></span>
+  <span class="badge">● live · Stage cloud</span>
+</header>
+<main>
+  <div class="controls">
+    <button class="primary" data-act="burst">Simulate 25 uploads</button>
+    <button data-act="single">Simulate 1 upload</button>
+    <button class="danger" data-act="dm">Inject DM zero-results</button>
+    <button data-act="replay">Replay dead-letter queue</button>
+    <button data-act="reset">Reset demo data</button>
+  </div>
+
+  <div class="section-title">Observability — alerting lenses</div>
+  <div class="grid">
+    <div class="tile" id="lens-core"><div class="label">Core processing · AEM</div>
+      <div class="value">0</div><div class="hint">live query · dam:assetState</div></div>
+    <div class="tile" id="lens-queue"><div class="label">Queue depth</div>
+      <div class="value">0</div><div class="hint">assets not yet READY_FOR_VIA</div></div>
+    <div class="tile" id="lens-failures"><div class="label">Failures</div>
+      <div class="value">0</div><div class="hint">dead-lettered assets</div></div>
+    <div class="tile" id="lens-completion"><div class="label">Completion state</div>
+      <div class="value">0</div><div class="hint">stuck assets (no transition)</div></div>
+  </div>
+
+  <div class="section-title">Pipeline</div>
+  <div class="pipeline">
+    <div class="stage">
+      <h3>Core tier · AEM</h3>
+      <div class="desc">Binary upload · Asset Compute · profiles → <code>processed</code>. Emits completion event.</div>
+    </div>
+    <div class="arrow">▶</div>
+    <div class="branches" id="branches"></div>
+  </div>
+
+  <div class="section-title">Business readiness (per-asset ledger, outside AEM)</div>
+  <div class="readiness-bar" id="readiness"></div>
+  <div class="legend" id="legend"></div>
+
+  <div class="foot">
+    Branches run independently — each with its own retry, dead-letter queue, and idempotency key.
+    A failure in one branch never blocks the others. <span id="status"></span>
+  </div>
+</main>
+
+<script>
+// Hosted static dashboard. The CDN host proxies /api/v1/web/* to the runtime,
+// so a relative base is same-origin (no CORS needed) and namespace-agnostic —
+// the same build works on Stage and Production. (Actions still return CORS
+// headers, so an absolute cross-origin base would also work if embedded.)
+const BASE = '/api/v1/web/toyota-assets-fanout';
+const BRANCHES = ['workflow-sync','pim-sync','metadata-enrichment','dynamic-media-readiness','via-indexing'];
+const READINESS_COLORS = {
+  READY_FOR_VIA: '#33d69f', PARTIALLY_READY: '#7ad1b0', BRANCH_RUNNING: '#4b8dff',
+  BRANCH_PENDING: '#55617d', BRANCH_RETRYABLE_FAILURE: '#f5a623',
+  BRANCH_TERMINAL_FAILURE: '#ff5c7a', CORE_COMPLETE: '#8a97b1', CORE_PROCESSING: '#a06bff',
+};
+const el = (id) => document.getElementById(id);
+
+const getJSON  = async (p) => (await fetch(`${BASE}${p}`)).json();
+const postJSON = async (p, body) => (await fetch(`${BASE}${p}`, {
+  method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(body||{}),
+})).json();
+
+function makeEvent(faults) {
+  const id = `urn:aaid:aem:${crypto.randomUUID()}`;
+  return {
+    type: 'aem.assets.asset.processing_completed',
+    source: 'dashboard',
+    data: {
+      assetId: id,
+      assetPath: `/content/dam/via/demo/${id.slice(-6)}.jpg`,
+      assetVersion: Math.random().toString(16).slice(2, 14),
+      sourceSystem: 'toyota-pim', aemProgram: 'via', faults,
+    },
+  };
+}
+
+// Fan a burst of ingests at the cloud with small bounded concurrency.
+async function ingestMany(n, faults) {
+  const conc = 5; let ready = 0;
+  const events = Array.from({length:n}, () => makeEvent(faults));
+  for (let i=0;i<events.length;i+=conc) {
+    const res = await Promise.all(events.slice(i,i+conc).map(e => postJSON('/ingest', e)));
+    ready += res.filter(r => r.readiness === 'READY_FOR_VIA').length;
+  }
+  return ready;
+}
+
+// Simulate uploads through the CORE tier: each asset shows as queued
+// (CORE_PROCESSING) for a modeled time, then fans out. Makes queue depth move.
+async function simMany(n, faults) {
+  const conc = 8;
+  const events = Array.from({length:n}, () => {
+    const id = `urn:aaid:aem:${crypto.randomUUID()}`;
+    return { assetId: id, assetPath: `/content/dam/sim/${id.slice(-6)}.jpg`,
+             assetVersion: Math.random().toString(16).slice(2,14), faults };
+  });
+  for (let i=0;i<events.length;i+=conc) {
+    await Promise.all(events.slice(i,i+conc).map(e => postJSON('/sim-upload', e)));
+  }
+  return n;
+}
+
+function renderBranches(records) {
+  const agg = {};
+  for (const b of BRANCHES) agg[b] = { SUCCEEDED:0, RUNNING:0, RETRYABLE_FAILURE:0, DEAD_LETTER:0, PENDING:0 };
+  for (const r of records) for (const b of BRANCHES) {
+    const st = (r.branches[b] && r.branches[b].state) || 'PENDING';
+    agg[b][st] = (agg[b][st]||0) + 1;
+  }
+  el('branches').innerHTML = BRANCHES.map(b => {
+    const a = agg[b];
+    const dom = a.DEAD_LETTER ? 'DEAD_LETTER' : a.RUNNING ? 'RUNNING'
+      : a.RETRYABLE_FAILURE ? 'RETRYABLE_FAILURE' : a.SUCCEEDED ? 'SUCCEEDED' : 'PENDING';
+    return `<div class="branch">
+      <span class="dot ${dom}"></span>
+      <span class="name">${b}</span>
+      <span class="stat"><b>${a.SUCCEEDED}</b> ok · ${a.DEAD_LETTER} DLQ · ${a.RETRYABLE_FAILURE} retry</span>
+    </div>`;
+  }).join('');
+}
+
+function renderReadiness(breakdown) {
+  const total = Object.values(breakdown).reduce((s,n)=>s+n,0) || 1;
+  const order = Object.keys(READINESS_COLORS).filter(k => breakdown[k]);
+  el('readiness').innerHTML = order.map(k =>
+    `<div class="seg" title="${k}: ${breakdown[k]}" style="width:${100*breakdown[k]/total}%;background:${READINESS_COLORS[k]}"></div>`
+  ).join('') || '<div class="seg" style="width:100%;background:var(--panel2)"></div>';
+  el('legend').innerHTML = order.map(k =>
+    `<span><i style="background:${READINESS_COLORS[k]}"></i>${k} · ${breakdown[k]}</span>`).join('');
+}
+
+function setLens(id, value) {
+  const t = el(id); t.querySelector('.value').textContent = value;
+  t.classList.remove('alert-ok','alert-warn','alert-bad');
+  t.classList.add(value === 0 ? 'alert-ok' : value < 5 ? 'alert-warn' : 'alert-bad');
+}
+
+async function refresh() {
+  // core-poll returns the CACHED AEM counts (no AEM call per view).
+  const [metrics, ledger, aem] = await Promise.all([
+    getJSON('/metrics'), getJSON('/ledger'), getJSON('/core-poll').catch(() => ({})),
+  ]);
+  const l = metrics.alertingLenses;
+
+  // Core-processing tile = REAL AEM backlog (assets in-flight in the core tier,
+  // invisible to events). Neutral purple; not an alert.
+  const backlog = aem.backlog || 0;
+  const ct = el('lens-core');
+  ct.querySelector('.value').textContent = backlog;
+  ct.querySelector('.value').style.color = backlog > 0 ? '#a06bff' : 'var(--muted)';
+  ct.querySelector('.hint').textContent =
+    aem.ts ? `${aem.processing||0} processing · ${aem.customWorkflowProcessing||0} workflow · ${aem.failed||0} failed · ${aem.total||0} total uploaded`
+           : 'live query · dam:assetState';
+
+  setLens('lens-queue', l.queueDepth.assetsNotReadyForVia);
+  setLens('lens-failures', l.failures.deadLetteredAssets);
+  setLens('lens-completion', l.completionState.stuckAssets);
+  renderBranches(ledger.records || []);
+  renderReadiness(metrics.readinessBreakdown || {});
+}
+
+const status = (msg) => { el('status').textContent = msg; };
+let busy = false;
+async function act(name) {
+  if (busy) return; busy = true;
+  document.querySelectorAll('button').forEach(b => b.disabled = true);
+  try {
+    if (name === 'burst')  { status('Simulating 25 uploads (core → fan-out)…'); await simMany(25); status('25 queued in core processing — watch them drain'); }
+    if (name === 'single') { await simMany(1); status('1 uploaded — queued in core processing'); }
+    if (name === 'dm')     { status('Ingesting with DM zero-results…'); await ingestMany(1, {dmZeroResults:true}); status('DM zero-results → dead-lettered'); }
+    if (name === 'replay') { status('Replaying dead-letter queue…'); const r = await postJSON('/dlq-replay', {}); status(`Replayed ${r.replayedCount} branch execution(s)`); }
+    if (name === 'reset')  {
+      status('Clearing demo data…');
+      await postJSON('/admin', { op: 'resetDemo' });
+      await refresh();
+      status('Demo data cleared (AEM config preserved)');
+      return;
+    }
+    await refresh();
+  } catch (e) {
+    status('Error: ' + (e && e.message || e));
+  } finally {
+    busy = false; document.querySelectorAll('button').forEach(b => b.disabled = false);
+  }
+}
+
+document.querySelectorAll('button[data-act]').forEach(b =>
+  b.addEventListener('click', () => act(b.dataset.act)));
+
+renderBranches([]); renderReadiness({});
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

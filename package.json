@@ -1,0 +1,21 @@
+{
+  "name": "toyota-assets-fanout",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Event-driven fan-out post-processing for AEM Assets (Toyota target architecture demo)",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dashboard": "node scripts/server.js",
+    "simulate": "node scripts/simulate.js",
+    "test": "node test/harness.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@adobe/aio-lib-state": "^4",
+    "openwhisk": "^3.21.8"
+  },
+  "devDependencies": {},
+  "comment": "openwhisk is only require()d when DISPATCH_MODE=async (real runtime); aio-lib-state only when FANOUT_STORE=aio. Both are lazy-loaded, so the local harness/simulator/dashboard still run with zero installs; they are listed here so `aio app deploy` bundles them."
+}
