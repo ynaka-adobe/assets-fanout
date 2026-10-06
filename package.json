@@ -7,7 +7,7 @@
   "scripts": {
     "dashboard": "node scripts/server.js",
     "simulate": "node scripts/simulate.js",
-    "test": "node test/harness.js"
+    "test": "node test/mixed-media-set.js && node test/harness.js"
   },
   "engines": {
     "node": ">=18"

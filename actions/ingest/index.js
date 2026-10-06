@@ -1,15 +1,13 @@
 /*
  * Ingest action — the event boundary entrypoint.
  *
- * Registered as the webhook/journal consumer for the AEM Assets
- * `asset.processing_completed` I/O Event. It normalizes the event and hands it
- * to the fan-out dispatcher. This action is deliberately lightweight (doc:
- * "Keep AEM post-processing steps lightweight") — all heavy integration work
- * happens in the branch actions.
+ * Registered as the webhook/journal consumer for AEM Assets processing and
+ * metadata events. Metadata edits dispatch only the optional Mixed Media branch.
  */
 
-const { normalize } = require('../../lib/normalize');
+const { normalize, METADATA_UPDATED_EVENT_CODE } = require('../../lib/normalize');
 const { fanout } = require('../../lib/fanout');
+const { MIXED_MEDIA_SET_BRANCH } = require('../../lib/states');
 const { increment } = require('../../lib/metrics');
 const { json, preflight } = require('../../lib/http');
 
@@ -34,7 +32,11 @@ async function main(params) {
     }
 
     await increment('events_received');
-    const result = await fanout(assetEvent);
+    const options =
+      assetEvent.eventType === METADATA_UPDATED_EVENT_CODE
+        ? { branches: [MIXED_MEDIA_SET_BRANCH] }
+        : undefined;
+    const result = await fanout(assetEvent, options);
     return json(200, result);
   } catch (err) {
     await increment('ingest_errors');
