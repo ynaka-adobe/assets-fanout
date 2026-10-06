@@ -46,6 +46,18 @@ application:
             function: actions/branches/dynamic-media-readiness/index.js
             web: 'no'
             runtime: nodejs:18
+          mixed-media-set:
+            function: actions/branches/mixed-media-set/index.js
+            web: 'no'
+            runtime: nodejs:18
+            inputs:
+              S7_SERVER: $S7_SERVER
+              S7_COMPANY_HANDLE: $S7_COMPANY_HANDLE
+              S7_USER: $S7_USER
+              S7_PASSWORD: $S7_PASSWORD
+              S7_SOURCE_IMAGE_FOLDER_PATH: $S7_SOURCE_IMAGE_FOLDER_PATH
+              S7_SET_SEARCH_FOLDER_PATH: $S7_SET_SEARCH_FOLDER_PATH
+              S7_SET_FOLDER_PATH: $S7_SET_FOLDER_PATH
           via-indexing:
             function: actions/branches/via-indexing/index.js
             web: 'no'

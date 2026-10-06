@@ -17,7 +17,8 @@ deploys to Adobe I/O Runtime unchanged (`FANOUT_STORE=aio`).
  │ dam:assetState=processed│               │        ├─ pim-sync               │
  └────────────────────────┘               │        ├─ metadata-enrichment    │
                                           │        ├─ dynamic-media-readiness│
-   each branch: own queue · retry ·       │        └─ via-indexing           │
+   each branch: own queue · retry ·          │        ├─ via-indexing           │
+   │        └─ mixed-media-set (optional)
    DLQ · idempotency · state              │  ledger (state model) · metrics  │
                                           └──────────────────────────────────┘
 ```
@@ -39,7 +40,7 @@ deploys to Adobe I/O Runtime unchanged (`FANOUT_STORE=aio`).
 ```bash
 cd toyota-assets-fanout
 npm run dashboard  # live visual demo → http://localhost:3000
-npm test           # ingest one asset end-to-end → READY_FOR_VIA (headless)
+npm test           # Mixed Media regressions + ingest one asset → READY_FOR_VIA
 npm run simulate   # run all Phase-5 failure scenarios (headless)
 ```
 
@@ -80,11 +81,14 @@ observability story live.
 - **`actions/ingest`** — consumer registered on the AEM Assets
   `asset.processing_completed` I/O Event. Normalizes and dispatches. Kept
   lightweight; no heavy work on the AEM completion path.
-- **`lib/fanout.js`** — opens the ledger, dispatches every required branch on
-  its own execution path (parallel; a PIM failure never blocks Dynamic Media).
-- **`actions/branches/*`** — the five branches. Each runs through
+- **`lib/fanout.js`** — opens the ledger, dispatches required branches and
+  optional integrations on independent execution paths.
+- **`actions/branches/*`** — five required branches and optional integrations.
+  Each runs through
   `runBranch()`: retry with exponential backoff + jitter, dead-letter on
   budget exhaustion, idempotency key = `sha256(assetId:assetVersion:branch)`.
+- **`mixed-media-set`** — reconciles eligible image membership in the Scene7
+  sets named by AEM metadata. It is optional and does not gate readiness.
 - **`actions/ledger`** — read the per-asset record: branch states, history, and
   derived business-readiness (`READY_FOR_VIA` only when all branches succeed).
 - **`actions/metrics`** — metrics snapshot + the three alerting lenses.
@@ -105,6 +109,31 @@ are deterministic and repeatable:
 
 Remove the whole `faults` block for real events.
 
+### Optional Scene7 Mixed Media Set branch
+
+The branch processes images under `/content/dam/brand/Brand 14/` and ignores
+other paths and non-image assets. It unions the literal set names in AEM's
+`masterPartRecordKeys` and `businessUnitPartRecordKeys` metadata properties.
+Configure those properties in the AEM asset metadata schema and populate them
+before using the integration. AEM metadata updates dispatch only this branch
+when either exact, case-sensitive property changes; both `event:updated` and
+`event:created` event fields are recognized. Completion events continue to
+dispatch the five required branches and this optional branch.
+
+Scene7 creates a missing set or adds the image only when it is absent from an
+existing set. Repeated events leave existing memberships unchanged and do not
+trigger redundant publishes. Only IPS fault `30000` with the Image Serving
+Publish “already running” reason is treated as a successful publish; other
+Scene7 errors remain retryable and can dead-letter.
+
+Set `S7_SERVER`, `S7_COMPANY_HANDLE`, `S7_USER`, `S7_PASSWORD`,
+`S7_SOURCE_IMAGE_FOLDER_PATH`, `S7_SET_SEARCH_FOLDER_PATH`, and
+`S7_SET_FOLDER_PATH` in the ignored local `.env`; `app.config.yaml` maps these
+values to action inputs. All three folder paths are required, company-relative,
+and end in `/`. Source-image lookup, set search, and new-set destination are
+separate settings. Leave them empty to safely skip the optional integration.
+Keep real credentials out of source control and logs.
+
 ## Deploy to Adobe I/O Runtime
 
 Prereqs: an App Builder project + workspace, `aio` CLI, the AEM Assets event
@@ -116,11 +145,11 @@ cp .env.example .env      # fill namespace/auth; keep FANOUT_STORE=aio
 aio app deploy
 ```
 
-Then register `ingest` as the webhook for the AEM Assets
-`asset.processing_completed` event (Adobe Developer Console → your project →
-Events → add AEM Assets → select the completed event → point the webhook at the
-deployed `ingest` URL). Web action URLs are printed by `aio app deploy`; check
-the ledger and metrics with:
+Then register `ingest` as the webhook for AEM Assets
+`asset.processing_completed`, and add `asset.metadata_updated` if using Mixed
+Media Sets (Adobe Developer Console → your project → Events → add AEM Assets →
+select each event → point the webhook at the deployed `ingest` URL). Web action
+URLs are printed by `aio app deploy`; check the ledger and metrics with:
 
 ```bash
 curl "$LEDGER_URL?assetId=<assetId>"
@@ -218,11 +247,12 @@ auto-detected from `__OW_API_KEY` / `__OW_ACTION_NAME` instead.
 app.config.yaml          # I/O Runtime manifest (actions, event consumer)
 actions/
   ingest/                # event boundary entrypoint
-  branches/*/            # the five independent fan-out branches
+  branches/*/            # five required and optional Mixed Media branches
   ledger/  metrics/  dlq-replay/
 lib/
   states.js  correlation.js  normalize.js  fanout.js
   branchRunner.js  branchWork.js  ledger.js  dlq.js  store.js  metrics.js
 scripts/simulate.js      # Phase-5 pilot & failure scenarios
-test/harness.js          # happy-path end-to-end (npm test)
+test/mixed-media-set.js  # optional Mixed Media branch regression coverage
+test/harness.js          # happy-path end-to-end
 ```
